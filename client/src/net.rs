@@ -9,13 +9,15 @@ pub struct Networker {
 
 impl Networker {
     pub fn new() -> Self {
-        Self {
-            stream: None
-        }
+        Self { stream: None }
     }
 
     pub fn connect(&mut self) -> IoResult<()> {
-        self.stream = Some(TcpStream::connect(format!("{}:{}", env!("SERVER"), env!("PORT")))?);
+        self.stream = Some(TcpStream::connect(format!(
+            "{}:{}",
+            env!("SERVER"),
+            env!("PORT")
+        ))?);
         Ok(())
     }
 
