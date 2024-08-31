@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 game = { path = "../game" }
 ash = { version = "0.38.0", features = [ "linked" ] }
-winit = "0.30.5"
+glfw = { version = "0.58.0", features = [ "vulkan" ] }

@@ -3,16 +3,16 @@ use std::io::Result as IoResult;
 use std::net::TcpStream;
 
 /// Structure for the games communications with the server
-pub struct Networker {
+pub struct _Networker {
     stream: Option<TcpStream>,
 }
 
-impl Networker {
-    pub fn new() -> Self {
+impl _Networker {
+    pub fn _new() -> Self {
         Self { stream: None }
     }
 
-    pub fn connect(&mut self) -> IoResult<()> {
+    pub fn _connect(&mut self) -> IoResult<()> {
         self.stream = Some(TcpStream::connect(format!(
             "{}:{}",
             env!("SERVER"),
