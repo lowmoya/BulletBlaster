@@ -6,7 +6,10 @@ use ash::{
     vk::{self, PhysicalDevice, Queue, SurfaceKHR},
     Device, Entry, Instance,
 };
-use std::collections::HashSet;
+use std::{
+    collections::HashSet,
+    ffi::{c_char, CStr}
+};
 
 use queues::QueueFamilies;
 
@@ -19,6 +22,7 @@ pub struct Graphics {
     surface: SurfaceKHR,
     device: Device,
     graphics_queue: Queue,
+    presentation_queue: Queue,
 }
 
 impl Graphics {
@@ -26,19 +30,23 @@ impl Graphics {
         let entry = Entry::linked();
 
         let instance = Self::create_instance(&entry, &glfw)?;
+        let s_instance = SInstance::new(&entry, &instance);
         let surface = Self::create_surface(&window, &instance)?;
-        let physical_device = Self::pick_device(&instance)?;
-        let families = QueueFamilies::new(&instance, physical_device);
+        let physical_device = Self::pick_device(&instance, &s_instance, surface)?;
+        let families = QueueFamilies::new(&instance, &s_instance, physical_device, surface);
         let device = Self::create_logical_device(&instance, physical_device, &families)?;
         let graphics_queue = unsafe { device.get_device_queue(families.graphics.unwrap(), 0) };
+        let presentation_queue =
+            unsafe { device.get_device_queue(families.presentation.unwrap(), 0) };
 
         Ok(Self {
-            s_instance: ash::khr::surface::Instance::new(&entry, &instance),
             _entry: entry,
             instance,
+            s_instance,
             surface,
             device,
             graphics_queue,
+            presentation_queue,
         })
     }
 
@@ -89,15 +97,47 @@ impl Graphics {
         Ok(unsafe { surface.assume_init() })
     }
 
-    fn pick_device(instance: &Instance) -> Result<PhysicalDevice, &'static str> {
+    fn get_required_device_extensions() -> Vec<CStr> {
+        vec![ash::khr::swapchain::NAME]
+    }
+
+    fn pick_device(
+        instance: &Instance,
+        s_instance: &SInstance,
+        surface: SurfaceKHR,
+    ) -> Result<PhysicalDevice, &'static str> {
         let devices = unsafe { instance.enumerate_physical_devices() }.unwrap_or(Vec::default());
 
+        let required_extensions = Self::get_required_device_extensions();
+        let required_extension_ptrs = required_extensions
+            .iter()
+            .map(|s| s.as_ptr())
+            .collect::<Vec<*const i8>>();
         let mut selected: (Option<PhysicalDevice>, u32) = (None, 0);
-        for device in devices {
-            let families = QueueFamilies::new(instance, device);
+        'device: for device in devices {
+            let families = QueueFamilies::new(instance, s_instance, device, surface);
             if !families.is_valid() {
                 continue;
             }
+
+            let supported_extensions = unsafe {
+                instance.enumerate_device_extension_properties(device)
+                    .unwrap_or(Vec::default())
+            };
+            let supported_extension_ptrs = supported_extensions
+                    .iter()
+                    .map(|e| e.extension_name.as_ptr() )
+                    .collect::<Vec<*const i8>>();
+
+            'r_ext: for r_ext in &required_extension_ptrs {
+                for s_ext in &supported_extension_ptrs {
+                    /*if *r_ext == s_ext {
+                        continue 'r_ext;
+                    }*/
+                }
+                continue 'device;
+            }
+
 
             let _fc = unsafe { instance.get_physical_device_features(device) };
             let pc = unsafe { instance.get_physical_device_properties(device) };
@@ -131,6 +171,7 @@ impl Graphics {
         /* Get the list of unique indices. */
         let mut indices = HashSet::new();
         indices.insert(families.graphics.unwrap());
+        indices.insert(families.presentation.unwrap());
 
         /* Create queue infos for each unique index. */
         let priority = 1.0;
@@ -144,9 +185,16 @@ impl Graphics {
         }
 
         /* Create logical device. */
+        let extensions = Self::get_required_device_extensions();
+        let extension_ptrs = extensions
+            .iter()
+            .map(|s| s.as_ptr() as *const i8)
+            .collect::<Vec<*const i8>>();
         let create_info = vk::DeviceCreateInfo {
-            queue_create_info_count: 1,
+            queue_create_info_count: queue_create_infos.len() as u32,
             p_queue_create_infos: queue_create_infos.as_ptr(),
+            enabled_extension_count: extensions.len() as u32,
+            pp_enabled_extension_names: extension_ptrs.as_ptr(),
             ..Default::default()
         };
 
